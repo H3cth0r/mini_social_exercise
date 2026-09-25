@@ -1,5 +1,5 @@
 """
-Streaks domain — use cases.
+Contributions domain — use cases (streak rules).
 
 ONLY business rules live here: what a streak is, when it is at risk, which
 lengths count as milestones, what the flash message says. Receives a
@@ -86,6 +86,36 @@ def compute_best_streak(daily_counts):
         best = max(best, run)
         previous = day_date
     return best
+
+
+def current_streak(repo, user_id, today=None):
+    """
+    Just the current streak for one user — the badge/banner state. Used by
+    the write paths (add_post/add_comment) where the personal best is
+    irrelevant.
+
+    Returns:
+        Streak (current, at_risk; best stays 0).
+    """
+    if today is None:
+        today = utc_today()
+    return compute_streak(repo.get_daily_counts(user_id), today)
+
+
+def get_user_streak(repo, user_id, today=None):
+    """
+    Full streak info for one user, including their personal best — used by
+    the profile page.
+
+    Returns:
+        Streak with current, at_risk and best populated.
+    """
+    if today is None:
+        today = utc_today()
+    days = repo.get_daily_counts(user_id)
+    streak = compute_streak(days, today)
+    streak.best = compute_best_streak(days)
+    return streak
 
 
 def get_streaks_for_users(repo, user_ids, today=None):

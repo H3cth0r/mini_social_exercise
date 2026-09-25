@@ -1,7 +1,7 @@
 """
-Feature modules for MiniSocial, organized by domain (package-by-feature).
+Feature modules for MiniSocial, organized by domain (package-by-domain).
 
-Each folder under this package is one domain of the platform (streaks,
+Each folder under this package is one domain of the platform (contributions
 and later e.g. heatmap), holding its own layered files:
 
     entities.py      pure data objects

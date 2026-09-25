@@ -1,5 +1,9 @@
 """
-Streaks domain — the streak feature of MiniSocial.
+Contributions domain — user contribution activity (posts + comments).
+
+The data of this domain is one thing: how much each user contributed, per
+day. Features interpret that data in different ways — right now, the streak
+feature (Coding Assignment #1); later, e.g. the heatmap (Assignment #2).
 
 Layers inside this package (Clean-style, package-by-domain):
 
