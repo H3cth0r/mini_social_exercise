@@ -18,11 +18,7 @@ footer {
 
 
 
-/* ============================================================
-   Streak feature (Coding Assignment #1)
-   The badge next to usernames, the at-risk banner on the feed,
-   and the current/best stats on profile pages.
-   ============================================================ */
+/* Streak feature: badge, banner, stats */
 
 /* 🔥N pill next to a username */
 .streak-badge {

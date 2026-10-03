@@ -24,16 +24,7 @@ class ContributionRepository:
         self.db = db
 
     def get_daily_counts(self, user_id):
-        """
-        Args:
-            user_id: the user whose contribution history we count.
-
-        Returns:
-            {date_string: contribution_count} — the number of posts plus
-            comments this user made on each UTC day, e.g.
-            {'2026-09-21': 2, '2026-09-20': 1}. Days without contributions
-            are simply absent from the dict.
-        """
+        """{date: count} — posts + comments per UTC day for one user."""
         rows = self.db.execute(
             """
             SELECT date(created_at) AS d, COUNT(*) AS n
@@ -51,18 +42,9 @@ class ContributionRepository:
         return {row[0]: row[1] for row in rows}
 
     def get_activity_days_for_users(self, user_ids):
-        """
-        Batch version for pages that show many usernames at once (the feed,
-        post detail, follower lists), so we never run one query per post.
+        """Batch version: {user_id: {date: count}} for each of user_ids.
 
-        Args:
-            user_ids: iterable of user ids shown on the page.
-
-        Returns:
-            {user_id: {date_string: count}} — the same shape get_daily_counts()
-            returns for one user, for every user in user_ids. The full history
-            is returned (not just recent days), so the usecases can compute
-            both the current streak and the personal best.
+        Full history per user, one query for the whole page.
         """
         user_ids = list(user_ids)
         if not user_ids:

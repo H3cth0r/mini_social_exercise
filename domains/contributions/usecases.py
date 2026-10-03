@@ -1,46 +1,37 @@
 """
 Contributions domain — use cases (streak rules).
 
-ONLY business rules live here: what a streak is, when it is at risk, which
-lengths count as milestones, what the flash message says. Receives a
-repository as a parameter (dependency injection) and returns entities —
-this module never imports sqlite3, Flask, or Jinja, so it is unit-testable
-with a plain fake repository.
+Only business rules live here (what a streak is, when it is at risk, toast
+copy). Repositories are passed in, so this module imports no sqlite3 or
+Flask and is unit-testable with a fake repository.
 """
 
 import datetime
 
 from .entities import Streak
 
-# Streak lengths celebrated with a special toast, exactly once (on the
-# contribution that reaches them). System-suggested goals
-# (Kraut & Resnick 2011, ch. 2, design claim 13).
+# Streak lengths celebrated with a special toast (design claim 13).
 MILESTONES = (3, 7, 14, 30)
 
 _DATE_FORMAT = '%Y-%m-%d'
 
 
 def utc_today():
-    """Today's date as the app stores it: the UTC date, 'YYYY-MM-DD'.
+    """Today as the app stores it: the UTC date, 'YYYY-MM-DD'.
 
-    The server and the Docker container both run UTC and SQLite stores
-    CURRENT_TIMESTAMP in UTC, so utcnow() and date(created_at) share one
-    timeline. Simplification: a post at 00:30 Finnish time (21:30 UTC of the
-    previous day) counts toward the previous UTC day.
+    Server time and SQLite timestamps are both UTC, so they share one
+    timeline (and the day boundary is UTC midnight).
     """
     return datetime.datetime.utcnow().strftime(_DATE_FORMAT)
 
 
 def compute_streak(daily_counts, today):
-    """
-    Args:
-        daily_counts: {date_string: count} for one user (from a repository).
-        today: the current UTC date, 'YYYY-MM-DD'.
+    """Streak for one user from their daily counts.
 
-    Returns:
-        Streak: consecutive days ending today — or yesterday if nothing
-        today yet (then at_risk=True). A fully missed day resets to
-        Streak(0, at_risk=False).
+    daily_counts: {date_string: count} (from a repository).
+    today: the current UTC date, 'YYYY-MM-DD'.
+    Returns a Streak: consecutive days ending today, or ending yesterday
+    when nothing today yet (at_risk=True); a missed day resets to 0.
     """
     current = 0
     day = _to_date(today)
@@ -64,14 +55,7 @@ def compute_streak(daily_counts, today):
 
 
 def compute_best_streak(daily_counts):
-    """
-    Args:
-        daily_counts: {date_string: count}, as returned by a repository.
-
-    Returns:
-        The longest run of consecutive days anywhere in the user's full
-        history (int). Pure computation over the daily counts.
-    """
+    """Longest run of consecutive days in the user's full history (int)."""
     if not daily_counts:
         return 0
     best = 0
@@ -89,27 +73,14 @@ def compute_best_streak(daily_counts):
 
 
 def current_streak(repo, user_id, today=None):
-    """
-    Just the current streak for one user — the badge/banner state. Used by
-    the write paths (add_post/add_comment) where the personal best is
-    irrelevant.
-
-    Returns:
-        Streak (current, at_risk; best stays 0).
-    """
+    """Current streak for one user (badge/banner state; best not computed)."""
     if today is None:
         today = utc_today()
     return compute_streak(repo.get_daily_counts(user_id), today)
 
 
 def get_user_streak(repo, user_id, today=None):
-    """
-    Full streak info for one user, including their personal best — used by
-    the profile page.
-
-    Returns:
-        Streak with current, at_risk and best populated.
-    """
+    """Full streak info for one user: current, at_risk and personal best."""
     if today is None:
         today = utc_today()
     days = repo.get_daily_counts(user_id)
@@ -119,20 +90,11 @@ def get_user_streak(repo, user_id, today=None):
 
 
 def get_streaks_for_users(repo, user_ids, today=None):
-    """
-    Batch use case for pages that show many usernames at once (the feed,
-    post detail, follower lists). One repository query for the whole page,
-    then one rule pass per user.
+    """Batch version for pages showing many users at once.
 
-    Args:
-        repo: a streaks repository (the real one, or a fake in tests).
-        user_ids: iterable of user ids shown on the page.
-        today: optional UTC date override ('YYYY-MM-DD'), for testing.
-
-    Returns:
-        {user_id: Streak} for every user in user_ids. Users with no history
-        map to Streak(0, False), which the streak_badge macro renders as
-        nothing.
+    One repository query for the whole page, one rule pass per user.
+    Returns {user_id: Streak} for every requested user (no history ->
+    Streak(0, False), rendered as nothing by the badge macro).
     """
     user_ids = list(user_ids)
     if not user_ids:
@@ -147,13 +109,9 @@ def get_streaks_for_users(repo, user_ids, today=None):
 
 
 def streak_flash_message(current):
-    """
-    Toast copy shown right after the contribution that grew the streak.
-    Only called when the streak actually changed today, so the praise always
-    states a verifiable fact (design claim 20: feedback must be sincere).
+    """Toast copy for the contribution that grew the streak to `current`.
 
-    Milestone streaks get their own wording (design claim 13: concrete,
-    challenging goals); everything else reports the streak length.
+    Milestones get their own wording; everything else reports the length.
     """
     if current in MILESTONES:
         return f"🎉 You posted {current} days in a row!"

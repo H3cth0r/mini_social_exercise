@@ -8,17 +8,10 @@ import hashlib
 import re
 from datetime import datetime
 
-# Streak feature (Coding Assignment #1): routes call the domain's use cases
-# only. app.py is the composition root: it builds the repository (with this
-# request's DB connection) and injects it into the use cases — it never
-# touches repositories directly itself.
+# Contributions domain (streaks): routes call its use cases, and build the
+# repository here with the request's DB connection (dependency injection).
 from domains.contributions import repositories as contributions_repositories
 from domains.contributions import usecases as contributions_usecases
-
-
-def _contributions_repo():
-    """Build the contributions repository for this request (composition root)."""
-    return contributions_repositories.ContributionRepository(get_db())
 
 app = Flask(__name__)
 app.secret_key = '123456789' 
@@ -105,18 +98,6 @@ REACTION_EMOJIS = {
     'wow': '😮', 'sad': '😢', 'angry': '😠',
 }
 REACTION_TYPES = list(REACTION_EMOJIS.keys())
-
-
-def _streaks_for_owner_and_users(owner_id, users):
-    """
-    Helper for the followers/following pages: one batch streak query covering
-    the profile owner (whose name is in the page heading) and every listed
-    user. Returns {user_id: current_streak} for the template macros.
-    """
-    user_ids = {owner_id} | {u['id'] for u in users}
-    return {user_id: entity.current for user_id, entity in
-            contributions_usecases.get_streaks_for_users(
-                _contributions_repo(), user_ids).items()}
 
 
 @app.route('/')
@@ -215,25 +196,18 @@ def feed():
             'comments': comments_moderated
         })
 
-    #  4. Streak badges + banner (Coding Assignment #1)
-    #  One batch query for the whole page: the current streak of every user
-    #  shown — post authors AND comment authors (the feed renders the last
-    #  comments of each post) — plus the viewer, for the at-risk banner.
+    #  4. Streaks: one batch query for every user shown (post and comment
+    #     authors) plus the viewer, for the at-risk banner.
+    repo = contributions_repositories.ContributionRepository(get_db())
     page_user_ids = {post['user_id'] for post in posts}
     page_user_ids |= {c['user_id'] for entry in posts_data for c in entry['comments']}
     if current_user_id:
         page_user_ids.add(current_user_id)
-    streak_entities = contributions_usecases.get_streaks_for_users(
-        _contributions_repo(), page_user_ids)
-    streaks = {user_id: entity.current
-               for user_id, entity in streak_entities.items()}
-    my_streak = 0
-    streak_at_risk = False
-    if current_user_id:
-        viewer_streak = streak_entities.get(current_user_id)
-        if viewer_streak:
-            my_streak = viewer_streak.current
-            streak_at_risk = viewer_streak.at_risk
+    streak_entities = contributions_usecases.get_streaks_for_users(repo, page_user_ids)
+    streaks = {user_id: entity.current for user_id, entity in streak_entities.items()}
+    viewer_streak = streak_entities.get(current_user_id) if current_user_id else None
+    my_streak = viewer_streak.current if viewer_streak else 0
+    streak_at_risk = viewer_streak.at_risk if viewer_streak else False
 
     #  5. Render Template with Pagination Info
     return render_template('feed.html.j2',
@@ -266,17 +240,15 @@ def add_post():
 
     # Basic validation to ensure post is not empty
     if moderated_content and moderated_content.strip():
-        # Streak feedback (Coding Assignment #1): capture the streak BEFORE
-        # the insert, so we only celebrate when THIS contribution actually
-        # grew it (the first of the day). Posts 2, 3, ... of the same day
-        # flash nothing — automated praise that isn't earned is ignored
-        # (Kraut & Resnick 2011, ch. 2, design claim 20).
-        streak_before = contributions_usecases.current_streak(_contributions_repo(), user_id)
+        # Streak toast only when this contribution grew the streak (the
+        # first of the day) — unearned praise feels insincere (design claim 20).
         db = get_db()
+        repo = contributions_repositories.ContributionRepository(db)
+        streak_before = contributions_usecases.current_streak(repo, user_id)
         db.execute('INSERT INTO posts (user_id, content) VALUES (?, ?)',
                    (user_id, moderated_content))
         db.commit()
-        streak_after = contributions_usecases.current_streak(_contributions_repo(), user_id)
+        streak_after = contributions_usecases.current_streak(repo, user_id)
         if streak_after.current > streak_before.current:
             flash(contributions_usecases.streak_flash_message(streak_after.current),
                   'success')
@@ -371,10 +343,9 @@ def user_profile(username):
             is_currently_following = True
     # --
 
-    # Streak badge + personal best for this profile (Coding Assignment #1)
-    # `streaks` (dict, same convention as the other pages) feeds the badge in
-    # the title; streak/best feed the stats block.
-    profile_streak = contributions_usecases.get_user_streak(_contributions_repo(), user['id'])
+    # Streak: `streaks` feeds the title badge, streak/best the stats block.
+    repo = contributions_repositories.ContributionRepository(get_db())
+    profile_streak = contributions_usecases.get_user_streak(repo, user['id'])
 
     return render_template('user_profile.html.j2',
                            user=user,
@@ -399,9 +370,11 @@ def user_followers(username):
         JOIN users u ON f.follower_id = u.id
         WHERE f.followed_id = ?
     ''', (user['id'],))
-    # Streak badges for the owner (in the heading) and everyone listed
-    # (Coding Assignment #1) — one batch query.
-    streaks = _streaks_for_owner_and_users(user['id'], followers)
+    # Streak badges for the owner (heading) and everyone listed — one query.
+    repo = contributions_repositories.ContributionRepository(get_db())
+    user_ids = {user['id']} | {u['id'] for u in followers}
+    streaks = {uid: s.current for uid, s in
+               contributions_usecases.get_streaks_for_users(repo, user_ids).items()}
     return render_template('user_list.html.j2', user=user, users=followers,
                            title="Followers of", streaks=streaks)
 
@@ -416,9 +389,11 @@ def user_following(username):
         JOIN users u ON f.followed_id = u.id
         WHERE f.follower_id = ?
     ''', (user['id'],))
-    # Streak badges for the owner (in the heading) and everyone listed
-    # (Coding Assignment #1) — one batch query.
-    streaks = _streaks_for_owner_and_users(user['id'], following)
+    # Streak badges for the owner (heading) and everyone listed — one query.
+    repo = contributions_repositories.ContributionRepository(get_db())
+    user_ids = {user['id']} | {u['id'] for u in following}
+    streaks = {uid: s.current for uid, s in
+               contributions_usecases.get_streaks_for_users(repo, user_ids).items()}
     return render_template('user_list.html.j2', user=user, users=following,
                            title="Users followed by", streaks=streaks)
 
@@ -464,12 +439,11 @@ def post_detail(post_id):
         comment['content'] = moderated_comment_content
         comments.append(comment)
 
-    # Streak badges for the post author and every commenter on this page
-    # (Coding Assignment #1) — one batch query.
-    streak_user_ids = {post['user_id']} | {c['user_id'] for c in comments}
-    streaks = {user_id: entity.current for user_id, entity in
-               contributions_usecases.get_streaks_for_users(
-                   _contributions_repo(), streak_user_ids).items()}
+    # Streak badges for the post author and every commenter — one query.
+    repo = contributions_repositories.ContributionRepository(get_db())
+    user_ids = {post['user_id']} | {c['user_id'] for c in comments}
+    streaks = {uid: s.current for uid, s in
+               contributions_usecases.get_streaks_for_users(repo, user_ids).items()}
 
     # Pass the moderated data to the template
     return render_template('post_detail.html.j2',
@@ -575,14 +549,14 @@ def add_comment(post_id):
 
     # Basic validation to ensure comment is not empty
     if content and content.strip():
-        # Streak feedback (Coding Assignment #1): only flash when THIS comment
-        # is the user's first contribution of the day (see add_post).
-        streak_before = contributions_usecases.current_streak(_contributions_repo(), user_id)
+        # Same streak toast rule as add_post (design claim 20).
         db = get_db()
+        repo = contributions_repositories.ContributionRepository(db)
+        streak_before = contributions_usecases.current_streak(repo, user_id)
         db.execute('INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
                    (post_id, user_id, content))
         db.commit()
-        streak_after = contributions_usecases.current_streak(_contributions_repo(), user_id)
+        streak_after = contributions_usecases.current_streak(repo, user_id)
         if streak_after.current > streak_before.current:
             flash(contributions_usecases.streak_flash_message(streak_after.current),
                   'success')

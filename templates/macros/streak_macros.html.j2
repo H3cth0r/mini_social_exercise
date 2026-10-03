@@ -1,26 +1,15 @@
 {#
-Streak macros (Coding Assignment #1) — the presentation layer of the
-contributions domain.
+Streak macros: badge, banner, stats.
 
-Every macro here receives PLAIN VALUES (ints / dicts / bools) prepared by the
-routes in app.py — never domain entities — so templates stay decoupled from
-domains/. All of them are quiet for users with no streak (streak 0 renders
-nothing), per the acceptance checklist.
-
-Design claims behind the visible design:
-  - badge everywhere  -> ch2 DC 12 (social proof) / ch3 DC 15 (bonds)
-  - banner, only for  -> ch2 DC 4 (personalized ask, not a broadcast) and
-    users who care       DC 6 (benefit-stressing, not nagging the inactive)
-  - stats framed as   -> ch2 DC 21 ("done enough"): the best is a target to
-    a target to beat     beat, and the record line only appears when it is true
+Templates receive only plain values (dicts/ints/bools) prepared by the
+routes in app.py, so nothing here touches the domain layer directly.
+Everything stays quiet for users with no streak.
 #}
 
 {% from "macros/user_macros.html.j2" import user_display %}
 
 {% macro streak_badge(streaks, user_id) %}
-  {# The 🔥N pill shown next to a username. Looks the user up in the
-     page-level `streaks` dict ({user_id: current_streak}) the route computed
-     in ONE batch query. Renders nothing for streak 0 / absent users. #}
+  {# 🔥N pill next to a username; renders nothing for streak 0. #}
   {% set streak = streaks.get(user_id, 0) if streaks is defined and streaks else 0 %}
   {% if streak > 0 %}
     <span class="streak-badge"
@@ -29,15 +18,13 @@ Design claims behind the visible design:
 {% endmacro %}
 
 {% macro user_with_streak(streaks, user_id, username) %}
-  {# Convenience for sites that are NOT already wrapped in a link: the
-     existing user_display macro (which renders its own <a>) plus the badge. #}
+  {# For sites not already wrapped in a link: username + badge. #}
   {{ user_display(username) }}{{ streak_badge(streaks, user_id) }}
 {% endmacro %}
 
 {% macro streak_banner(at_risk, streak) %}
-  {# Feed banner for the logged-in viewer. Shows ONLY when the viewer has a
-     live streak but has not contributed today (at risk) — never nags users
-     with no streak going (DC 4/6). #}
+  {# Feed banner, shown only when the viewer's streak needs today's
+     contribution — never nags users with no streak going. #}
   {% if at_risk and streak > 0 %}
     <div class="streak-banner" role="alert">
       🔥 Your <strong>{{ streak }}-day streak</strong> is at risk — contribute
@@ -47,8 +34,7 @@ Design claims behind the visible design:
 {% endmacro %}
 
 {% macro streak_stats(streak, best) %}
-  {# Profile block: current streak next to the personal best, framed as a
-     target to beat (DC 21). Hidden entirely for users with no activity. #}
+  {# Profile block: current streak next to the personal best. #}
   {% if streak > 0 %}
     <div class="streak-stats">
       <span class="streak-stats-item">🔥 Current: <strong>{{ streak }}</strong></span>
