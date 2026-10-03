@@ -216,9 +216,11 @@ def feed():
         })
 
     #  4. Streak badges + banner (Coding Assignment #1)
-    #  One batch query for the whole page: the current streak of every poster
-    #  shown (and of the viewer, for the at-risk banner).
+    #  One batch query for the whole page: the current streak of every user
+    #  shown — post authors AND comment authors (the feed renders the last
+    #  comments of each post) — plus the viewer, for the at-risk banner.
     page_user_ids = {post['user_id'] for post in posts}
+    page_user_ids |= {c['user_id'] for entry in posts_data for c in entry['comments']}
     if current_user_id:
         page_user_ids.add(current_user_id)
     streak_entities = contributions_usecases.get_streaks_for_users(
@@ -370,6 +372,8 @@ def user_profile(username):
     # --
 
     # Streak badge + personal best for this profile (Coding Assignment #1)
+    # `streaks` (dict, same convention as the other pages) feeds the badge in
+    # the title; streak/best feed the stats block.
     profile_streak = contributions_usecases.get_user_streak(_contributions_repo(), user['id'])
 
     return render_template('user_profile.html.j2',
@@ -379,6 +383,7 @@ def user_profile(username):
                            followers_count=followers_count,
                            following_count=following_count,
                            is_following=is_currently_following,
+                           streaks={user['id']: profile_streak.current},
                            streak=profile_streak.current,
                            best=profile_streak.best)
     
