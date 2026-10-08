@@ -239,23 +239,41 @@ def add_post():
     # Get content from the submitted form
     content = request.form.get('content')
 
-    # Pass the user's content through the moderation function
-    moderated_content = content
-
+    # Pass the user's content through the moderation response ladder (DC 31):
+    # the score decides the standing's response, the text itself is stored
+    # raw and censored only when displayed (like every other display site).
     # Basic validation to ensure post is not empty
-    if moderated_content and moderated_content.strip():
+    if content and content.strip():
+        db = get_db()
+        mod_repo = moderation_repositories.ModerationRepository(db)
+        decision = moderation_usecases.moderate(
+            content, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
+        user_risk = moderation_usecases.user_risk_score(
+            mod_repo, user_id, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
+
+        # The ladder may reject: a high-risk account posts at most once per
+        # hour, so a second post within the cooldown is not created at all.
+        standing = moderation_usecases.standing(
+            decision.score, user_risk, mod_repo.get_minutes_since_last_post(user_id))
+        if standing.action == moderation_usecases.ACTION_THROTTLE:
+            flash(standing.message, 'warning')
+            return redirect(url_for('feed'))
+
         # Streak toast only when this contribution grew the streak (the
         # first of the day) — unearned praise feels insincere (design claim 20).
-        db = get_db()
         repo = contributions_repositories.ContributionRepository(db)
         streak_before = contributions_usecases.current_streak(repo, user_id)
         db.execute('INSERT INTO posts (user_id, content) VALUES (?, ?)',
-                   (user_id, moderated_content))
+                   (user_id, content))
         db.commit()
         streak_after = contributions_usecases.current_streak(repo, user_id)
         if streak_after.current > streak_before.current:
             flash(contributions_usecases.streak_flash_message(streak_after.current),
                   'success')
+        # Medium standing: content is accepted but earns a private,
+        # face-saving reminder (design claim 23 wording of design claim 31).
+        if standing.action == moderation_usecases.ACTION_WARN:
+            flash(standing.message, 'warning')
         flash('Your post was successfully created!', 'success')
     else:
         # This will catch empty posts or posts that were fully censored
@@ -553,8 +571,19 @@ def add_comment(post_id):
 
     # Basic validation to ensure comment is not empty
     if content and content.strip():
-        # Same streak toast rule as add_post (design claim 20).
+        # The ladder's warn step also applies to comments; the throttle is
+        # deliberately post-only (proportionality: conversation stays open).
         db = get_db()
+        mod_repo = moderation_repositories.ModerationRepository(db)
+        decision = moderation_usecases.moderate(
+            content, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
+        user_risk = moderation_usecases.user_risk_score(
+            mod_repo, user_id, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
+        standing = moderation_usecases.standing(
+            decision.score, user_risk, mod_repo.get_minutes_since_last_post(user_id),
+            content_kind='comment')
+
+        # Same streak toast rule as add_post (design claim 20).
         repo = contributions_repositories.ContributionRepository(db)
         streak_before = contributions_usecases.current_streak(repo, user_id)
         db.execute('INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
@@ -564,6 +593,8 @@ def add_comment(post_id):
         if streak_after.current > streak_before.current:
             flash(contributions_usecases.streak_flash_message(streak_after.current),
                   'success')
+        if standing.action == moderation_usecases.ACTION_WARN:
+            flash(standing.message, 'warning')
         flash('Your comment was added.', 'success')
     else:
         flash('Comment cannot be empty.', 'warning')
