@@ -12,6 +12,10 @@ from datetime import datetime
 # repository here with the request's DB connection (dependency injection).
 from domains.contributions import repositories as contributions_repositories
 from domains.contributions import usecases as contributions_usecases
+# Moderation domain (assignment 2): content scoring + the sanctions ladder,
+# wired the same way as the contributions domain above.
+from domains.moderation import repositories as moderation_repositories
+from domains.moderation import usecases as moderation_usecases
 
 app = Flask(__name__)
 app.secret_key = '123456789' 
@@ -946,9 +950,11 @@ def user_risk_analysis(user_id):
         Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
     
-    score = 0
-
-    return score;
+    # Delegate to the moderation domain: profile, posts and comments are
+    # scored through moderate_content's rules, then combined (rule 2.2).
+    repo = moderation_repositories.ModerationRepository(get_db())
+    return moderation_usecases.user_risk_score(
+        repo, user_id, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
 
     
 # Assignment 2.1
@@ -969,10 +975,11 @@ def moderate_content(content):
     Then, navigate to the /admin endpoint. (http://localhost:8080/admin)
     """
 
-    moderated_content = content
-    score = 0
-    
-    return moderated_content, score
+    # Delegate to the moderation domain, which applies the rules-page stages:
+    # 1.1 removal (tier1/tier2), 1.2 scored corrections (tier3, links, caps).
+    decision = moderation_usecases.moderate(
+        content, TIER1_WORDS, TIER2_PHRASES, TIER3_WORDS)
+    return decision.filtered_content, decision.score
 
 # Coding Assignment #3
 # Assignment 3.1
