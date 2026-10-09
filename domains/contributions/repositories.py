@@ -68,3 +68,52 @@ class ContributionRepository:
         # Contract: every requested user gets an entry, even if it is empty,
         # so callers never need to handle a missing key.
         return {user_id: days_by_user.get(user_id, {}) for user_id in user_ids}
+
+    # --- Streak rescue: the at-risk crew and nudges -------------------------
+    # Plain reads + writes for the nudge feature; every rule about WHO may
+    # be nudged is in usecases.py. Same style as above: positional access,
+    # plain Python types out.
+
+    def get_users_except(self, viewer_id):
+        """[(user_id, username)] for everyone but the viewer — the crew's
+        candidate pool (assembling and filtering happens in usecases)."""
+        rows = self.db.execute(
+            'SELECT id, username FROM users WHERE id != ? '
+            'ORDER BY username', (viewer_id,)).fetchall()
+        return [(row[0], row[1]) for row in rows]
+
+    def get_followed_ids(self, viewer_id):
+        """set of ids the viewer follows (crews show familiar people first)."""
+        rows = self.db.execute(
+            'SELECT followed_id FROM follows WHERE follower_id = ?',
+            (viewer_id,)).fetchall()
+        return {row[0] for row in rows}
+
+    def get_nudged_ids_by(self, nudger_id, day):
+        """set of ids this user nudged on one UTC day (the per-day limit)."""
+        rows = self.db.execute(
+            'SELECT nudged_id FROM nudges WHERE nudger_id = ? AND day = ?',
+            (nudger_id, day)).fetchall()
+        return {row[0] for row in rows}
+
+    def nudge_pair_exists(self, nudger_id, nudged_id, day):
+        """True when this pair already exchanged a nudge on this UTC day."""
+        return self.db.execute(
+            'SELECT 1 FROM nudges WHERE nudger_id = ? AND nudged_id = ? '
+            'AND day = ?', (nudger_id, nudged_id, day)).fetchone() is not None
+
+    def save_nudge(self, nudge):
+        """Insert one nudge. The caller has re-checked eligibility against
+        fresh data; saving is never trusted to the template/route alone."""
+        self.db.execute(
+            'INSERT INTO nudges (nudger_id, nudged_id, day) VALUES (?, ?, ?)',
+            (nudge.nudger_id, nudge.nudged_id, nudge.day))
+        self.db.commit()
+
+    def count_distinct_nudgers(self, nudged_id, since_day):
+        """How many different friends nudged this user on/after since_day —
+        the profile's 'N friends nudged you this week' credit."""
+        row = self.db.execute(
+            'SELECT COUNT(DISTINCT nudger_id) FROM nudges '
+            'WHERE nudged_id = ? AND day >= ?', (nudged_id, since_day)).fetchone()
+        return row[0]

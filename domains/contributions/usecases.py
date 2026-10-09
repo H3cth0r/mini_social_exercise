@@ -8,7 +8,7 @@ Flask and is unit-testable with a fake repository.
 
 import datetime
 
-from .entities import Streak
+from .entities import CrewEntry, Streak
 
 # Streak lengths celebrated with a special toast (design claim 13).
 MILESTONES = (3, 7, 14, 30)
@@ -128,3 +128,118 @@ def _to_date(value):
 
 def _day_before(day):
     return day - datetime.timedelta(days=1)
+
+
+# ---------------------------------------------------------------------------
+# Streak rescue: the at-risk crew and nudges.
+#
+# A nudge is a personal ASK from one user to another ("save your streak!") —
+# a mechanic between users, not a display. The rules it follows:
+#   - Only a *genuinely at-risk* streak can be nudged (streak >= 1 day,
+#     nothing contributed today) — there must be something real to rescue.
+#   - One nudge per (nudger -> target) per UTC day.
+#   - A nudge NEVER extends or fakes a streak; only the target's own
+#     posting/commenting does (praise/asks must stay sincere — claim 20).
+#   - The crew shows familiar people first (claim 11: asks from people we
+#     know feel personal), never a ranking (claim 22: no competition).
+# ---------------------------------------------------------------------------
+
+# How many crew cards the feed shows at most.
+CREW_SIZE = 6
+
+
+def nudge_eligibility(target_streak, target_at_risk, already_nudged_today):
+    """(allowed, reason) — the single source of truth for whether a nudge
+    happens. The route re-checks with fresh data; the button in the template
+    is never trusted."""
+    if already_nudged_today:
+        return False, 'You already nudged them today — one nudge per day.'
+    if target_streak < 1 or not target_at_risk:
+        return False, 'Their streak is not at risk right now.'
+    return True, ''
+
+
+def nudge_message(nudger_name, streak):
+    """Toast the nudged user sees on their next visit (claims 4 and 10: a
+    personal ask from a named peer, stressing the benefit of acting today)."""
+    day_word = 'day' if streak == 1 else 'days'
+    return (f"🔥 {nudger_name} hopes you keep your {streak}-{day_word} "
+            f"streak — contribute today!")
+
+
+def nudge_confirmation(nudged_name):
+    """Toast the nudger sees after sending (interactable response)."""
+    return f"You nudged {nudged_name} — hopefully they're back for one more day!"
+
+
+def nudged_you_message(count):
+    """Profile-card credit line, or None when nobody nudged (rendered as
+    nothing — no nagging, no counters for idle users, claims 20/21)."""
+    if count <= 0:
+        return None
+    who = '1 friend nudged' if count == 1 else f'{count} friends nudged'
+    return f"{who} you this week — the streak must go on!"
+
+
+def assemble_crew(streak_by_user, username_by_id, viewer_id, followed_ids,
+                  nudged_today_ids, crew_size=CREW_SIZE):
+    """The feed's rescue crew: at-risk users, viewer excluded.
+
+    streak_by_user:   {user_id: Streak}
+    username_by_id:   {user_id: username}
+    followed_ids:     set of ids the viewer follows
+    nudged_today_ids: ids the viewer already nudged today
+
+    Ordering rule (no ranking is SHOWN — the order only decides who gets
+    the limited card slots): followed users first (claim 11: familiar asks
+    work), then the longest streaks (the most saveable one is closest to
+    their milestone, claim 13). Capped at crew_size.
+    """
+    entries = []
+    for user_id, streak_entity in streak_by_user.items():
+        # Eligibility, again pure: alive streak, nothing today, not the viewer.
+        if user_id == viewer_id:
+            continue
+        if not streak_entity.at_risk or streak_entity.current < 1:
+            continue
+        entries.append(CrewEntry(
+            user_id=user_id,
+            username=username_by_id.get(user_id, f'user {user_id}'),
+            streak=streak_entity.current,
+            followed_by_viewer=user_id in (followed_ids or ()),
+            nudged_today=user_id in (nudged_today_ids or ()),
+        ))
+    # False sorts before True, so followed entries come first; then longest.
+    entries.sort(key=lambda e: (not e.followed_by_viewer, -e.streak, e.username))
+    return entries[:crew_size]
+
+
+def rescue_crew(repo, viewer_id, today=None):
+    """One batch assembly of the whole crew for a feed render.
+
+    Repository reads happen here (they are batch-sized, one small query
+    each); every rule lives in assemble_crew / compute_streak above. No
+    crew for logged-out visitors.
+    """
+    if viewer_id is None:
+        return []
+    if today is None:
+        today = utc_today()
+    users = repo.get_users_except(viewer_id)
+    user_ids = [uid for uid, _ in users]
+    username_by_id = {uid: name for uid, name in users}
+    streak_by_user = get_streaks_for_users(repo, user_ids, today)
+    return assemble_crew(
+        streak_by_user,
+        username_by_id,
+        viewer_id,
+        repo.get_followed_ids(viewer_id),
+        repo.get_nudged_ids_by(viewer_id, today),
+    )
+
+
+def week_start_day(today):
+    """'YYYY-MM-DD' six days before `today` — the start of this UTC week
+    (inclusive), the window the profile's nudge credit counts over."""
+    day = _to_date(today) - datetime.timedelta(days=6)
+    return day.strftime(_DATE_FORMAT)
