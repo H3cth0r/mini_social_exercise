@@ -102,6 +102,15 @@ class ContributionRepository:
             'SELECT 1 FROM nudges WHERE nudger_id = ? AND nudged_id = ? '
             'AND day = ?', (nudger_id, nudged_id, day)).fetchone() is not None
 
+    def get_nudger_names(self, nudged_id, day):
+        """Usernames of the friends who nudged this user on one UTC day —
+        the feed's pending personal-ask toast names them."""
+        rows = self.db.execute(
+            'SELECT u.username FROM nudges n JOIN users u '
+            'ON n.nudger_id = u.id WHERE n.nudged_id = ? AND n.day = ?',
+            (nudged_id, day)).fetchall()
+        return [row[0] for row in rows]
+
     def save_nudge(self, nudge):
         """Insert one nudge. The caller has re-checked eligibility against
         fresh data; saving is never trusted to the template/route alone."""

@@ -12,6 +12,7 @@ from datetime import datetime
 # repository here with the request's DB connection (dependency injection).
 from domains.contributions import repositories as contributions_repositories
 from domains.contributions import usecases as contributions_usecases
+from domains.contributions import entities as contributions_entities
 
 app = Flask(__name__)
 app.secret_key = '123456789' 
@@ -98,6 +99,23 @@ REACTION_EMOJIS = {
     'wow': '😮', 'sad': '😢', 'angry': '😠',
 }
 REACTION_TYPES = list(REACTION_EMOJIS.keys())
+
+# The streak-rescue feature (nudges) needs its own table. This codebase has
+# no schema file — the tables exist inside database.sqlite — so a NEW table
+# is ensured in code instead. Idempotent, runs once at startup: it also
+# creates the table on a fresh database, so the feature works out of the box.
+def ensure_nudges_table():
+    connection = sqlite3.connect(DATABASE)
+    connection.execute(
+        'CREATE TABLE IF NOT EXISTS nudges ('
+        ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
+        ' nudger_id INTEGER NOT NULL,'
+        ' nudged_id INTEGER NOT NULL,'
+        ' day TEXT NOT NULL)')
+    connection.commit()
+    connection.close()
+
+ensure_nudges_table()
 
 
 @app.route('/')
@@ -209,6 +227,22 @@ def feed():
     my_streak = viewer_streak.current if viewer_streak else 0
     streak_at_risk = viewer_streak.at_risk if viewer_streak else False
 
+    # Streak rescue: the at-risk crew strip (at-risk users with a working
+    # Nudge button; followed users first — an ask from a familiar person) and
+    # the viewer's own pending nudges, delivered as a personal toast. The
+    # nudge toast fires only while the streak is still at risk: the moment
+    # the user contributes, the ask is answered and disappears with it.
+    rescue_crew_cards = []
+    if current_user_id:
+        rescue_crew_cards = contributions_usecases.rescue_crew(
+            repo, current_user_id)
+        if streak_at_risk:
+            nudger_names = repo.get_nudger_names(
+                current_user_id, contributions_usecases.utc_today())
+            if nudger_names:
+                flash(contributions_usecases.pending_nudge_message(
+                    nudger_names, my_streak), 'info')
+
     #  5. Render Template with Pagination Info
     return render_template('feed.html.j2',
                            posts=posts_data,
@@ -220,7 +254,8 @@ def feed():
                            reaction_types=REACTION_TYPES,
                            streaks=streaks,
                            my_streak=my_streak,
-                           streak_at_risk=streak_at_risk)
+                           streak_at_risk=streak_at_risk,
+                           rescue_crew=rescue_crew_cards)
 
 @app.route('/posts/new', methods=['POST'])
 def add_post():
@@ -347,6 +382,15 @@ def user_profile(username):
     repo = contributions_repositories.ContributionRepository(get_db())
     profile_streak = contributions_usecases.get_user_streak(repo, user['id'])
 
+    # Streak rescue: light, sincere credit on the profile card — how many
+    # different friends nudged this user this week (nothing ranked, nothing
+    # counted for the nudger side; nudges stay anonymous there).
+    nudged_this_week = repo.count_distinct_nudgers(
+        user['id'],
+        contributions_usecases.week_start_day(
+            contributions_usecases.utc_today()))
+    nudged_you = contributions_usecases.nudged_you_message(nudged_this_week)
+
     return render_template('user_profile.html.j2',
                            user=user,
                            posts=posts,
@@ -356,7 +400,8 @@ def user_profile(username):
                            is_following=is_currently_following,
                            streaks={user['id']: profile_streak.current},
                            streak=profile_streak.current,
-                           best=profile_streak.best)
+                           best=profile_streak.best,
+                           nudged_you=nudged_you)
     
 
 @app.route('/u/<username>/followers')
@@ -732,6 +777,47 @@ def unfollow_user(user_id):
         flash("You were not following this user.", "info")
 
     # Redirect back to the page the user came from
+    return redirect(request.referrer or url_for('feed'))
+
+@app.route('/u/<int:user_id>/nudge', methods=['POST'])
+def nudge_user(user_id):
+    """Streak rescue: the viewer nudges an at-risk user to contribute today.
+
+    A nudge is a personal ASK between users — it never changes any streak.
+    The button in the template is never trusted: the same pure rule that
+    drew the button (eligibility: streak really at risk, once per pair per
+    day) is re-checked here against fresh data."""
+    nudger_id = session.get('user_id')
+
+    if not nudger_id:
+        flash("You must be logged in to nudge.", "danger")
+        return redirect(url_for('login'))
+
+    if nudger_id == user_id:
+        flash("You cannot nudge yourself.", "warning")
+        return redirect(request.referrer or url_for('feed'))
+
+    target = query_db('SELECT id, username FROM users WHERE id = ?', (user_id,), one=True)
+    if not target:
+        flash("The user you want to nudge does not exist.", "danger")
+        return redirect(request.referrer or url_for('feed'))
+
+    repo = contributions_repositories.ContributionRepository(get_db())
+    today = contributions_usecases.utc_today()
+    target_streak = contributions_usecases.current_streak(repo, user_id)
+    already_nudged = repo.nudge_pair_exists(nudger_id, user_id, today)
+
+    allowed, reason = contributions_usecases.nudge_eligibility(
+        target_streak.current, target_streak.at_risk, already_nudged)
+
+    if not allowed:
+        flash(reason, "warning")
+    else:
+        repo.save_nudge(contributions_entities.Nudge(
+            nudger_id=nudger_id, nudged_id=user_id, day=today))
+        flash(contributions_usecases.nudge_confirmation(target['username']),
+              "success")
+
     return redirect(request.referrer or url_for('feed'))
 
 @app.route('/admin')

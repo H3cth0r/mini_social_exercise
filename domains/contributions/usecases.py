@@ -159,11 +159,21 @@ def nudge_eligibility(target_streak, target_at_risk, already_nudged_today):
     return True, ''
 
 
-def nudge_message(nudger_name, streak):
-    """Toast the nudged user sees on their next visit (claims 4 and 10: a
-    personal ask from a named peer, stressing the benefit of acting today)."""
-    day_word = 'day' if streak == 1 else 'days'
-    return (f"🔥 {nudger_name} hopes you keep your {streak}-{day_word} "
+def pending_nudge_message(nudger_names, streak):
+    """Toast the nudged user sees on the feed while their streak is still
+    at risk (claims 4 and 10: a personal ask from named, familiar peers,
+    stressing the benefit of acting today). It fires again only while the
+    ask is unanswered — the moment the user contributes, at_risk flips and
+    the toast disappears with it."""
+    if len(nudger_names) == 1:
+        hopes = f'{nudger_names[0]} hopes'
+    else:
+        others = len(nudger_names) - 1
+        word = 'friend' if others == 1 else 'friends'
+        count_word = 'one' if others == 1 else others
+        hopes = f'{nudger_names[0]} and {count_word} more {word} hope'
+    # English compounds the number always onto the singular — '2-day streak'.
+    return (f"🔥 {hopes} you keep your {streak}-day "
             f"streak — contribute today!")
 
 
