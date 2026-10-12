@@ -6,6 +6,7 @@ import json
 import sqlite3
 import hashlib
 import re
+import db_schema
 from datetime import datetime
 
 # Contributions domain (streaks): routes call its use cases, and build the
@@ -100,22 +101,11 @@ REACTION_EMOJIS = {
 }
 REACTION_TYPES = list(REACTION_EMOJIS.keys())
 
-# The streak-rescue feature (nudges) needs its own table. This codebase has
-# no schema file — the tables exist inside database.sqlite — so a NEW table
-# is ensured in code instead. Idempotent, runs once at startup: it also
-# creates the table on a fresh database, so the feature works out of the box.
-def ensure_nudges_table():
-    connection = sqlite3.connect(DATABASE)
-    connection.execute(
-        'CREATE TABLE IF NOT EXISTS nudges ('
-        ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
-        ' nudger_id INTEGER NOT NULL,'
-        ' nudged_id INTEGER NOT NULL,'
-        ' day TEXT NOT NULL)')
-    connection.commit()
-    connection.close()
-
-ensure_nudges_table()
+# Schema boot: the tables ship inside database.sqlite; this checks it
+# against schema.sql and creates only the tables that are missing (no
+# writes on a healthy database). 'schema.sql' sits next to DATABASE, same
+# convention as every other file path in this file.
+db_schema.ensure_schema(DATABASE, 'schema.sql')
 
 
 @app.route('/')
