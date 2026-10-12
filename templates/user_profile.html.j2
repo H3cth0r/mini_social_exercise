@@ -47,6 +47,11 @@
           </div>
 
           {{ streak_stats(streak, best) }}
+          {# Streak rescue credit: light, sincere — who cared enough to nudge
+             this user this week. Nothing rendered when nobody did. #}
+          {% if nudged_you %}
+          <p class="streak-nudged-you">{{ nudged_you }}</p>
+          {% endif %}
         </div>
       </div>
     </div>

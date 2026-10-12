@@ -9,6 +9,32 @@
 
 {% if session.get('user_id') %}
 {{ streak_banner(streak_at_risk, my_streak) }}
+
+{# Streak rescue: users whose streak needs today's contribution, each with
+   a working Nudge button. Familiar (followed) users come first; a user
+   already nudged today shows a quiet "Nudged" state instead of the button. #}
+{% if rescue_crew %}
+<div class="streak-rescue-crew" role="region" aria-label="Streak rescue crew">
+  <div class="rescue-title">🔥 These streaks need today's contribution — give a friend a nudge:</div>
+  <div class="rescue-cards">
+    {% for member in rescue_crew %}
+    <div class="rescue-card">
+      <a href="/u/{{ member.username }}" class="rescue-name">{{ member.username }}</a>
+      <span class="rescue-streak" title="{{ member.streak }}-day streak, at risk of breaking today">🔥 {{ member.streak }}</span>
+      {% if member.nudged_today %}
+      <span class="rescue-btn btn btn-sm btn-light text-muted" title="You already nudged them today">Nudged ✓</span>
+      {% else %}
+      <form action="{{ url_for('nudge_user', user_id=member.user_id) }}" method="POST">
+        <button type="submit" class="btn btn-sm rescue-btn"
+                title="Ask them to keep their streak alive (one nudge per day)">Nudge</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="col-md-8 mx-auto mb-4">
   <div class="card shadow-sm">
     <div class="card-body">
