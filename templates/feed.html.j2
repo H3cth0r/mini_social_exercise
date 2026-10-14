@@ -10,6 +10,28 @@
 {% if session.get('user_id') %}
 {{ streak_banner(streak_at_risk, my_streak) }}
 
+{# Welcome crew: brand-new members nobody greeted yet (DC 18 + DC 20).
+   The viewer's assigned newcomer is highlighted; a greeted newcomer
+   leaves the strip (the welcome was answered). #}
+{% if welcome_crew %}
+<div class="onboarding-welcome" role="region" aria-label="New members">
+  <div class="welcome-title">👋 New members — give them a first hello:</div>
+  <div class="welcome-cards">
+    {% for member in welcome_crew %}
+    <div class="welcome-card {% if member.assigned_to_me %}welcome-card-assigned{% endif %}"
+         {% if member.assigned_to_me %}title="You are this member's assigned greeter"{% endif %}>
+      <a href="/u/{{ member.username }}" class="welcome-name">{{ member.username }}</a>
+      <span class="welcome-age" title="Joined {{ member.age_days|round(1) }} days ago">just joined</span>
+      <form action="{{ url_for('greet_user', user_id=member.user_id) }}" method="POST">
+        <button type="submit" class="btn btn-sm welcome-btn"
+                title="Give them a friendly welcome (once per pair)">Say hi</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# Streak rescue: users whose streak needs today's contribution, each with
    a working Nudge button. Familiar (followed) users come first; a user
    already nudged today shows a quiet "Nudged" state instead of the button. #}

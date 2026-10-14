@@ -143,3 +143,72 @@ footer {
   font-size: 0.9rem;
   color: #b45309;
 }
+
+/* Onboarding: the welcome-crew strip on the feed (new members) */
+
+.onboarding-welcome {
+  max-width: 800px;
+  margin: 0 auto 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #a8d5ba;
+  border-radius: 0.375rem;
+  background-color: #f0f9f1;
+}
+
+.welcome-title {
+  font-size: 0.95rem;
+  color: #205b2d;
+  margin-bottom: 0.5rem;
+}
+
+.welcome-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.welcome-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #c9e7d3;
+  border-radius: 999px;
+  background-color: #ffffff;
+}
+
+/* The DC 20 assignment: the greeter's own responsibility stands out */
+.welcome-card-assigned {
+  border: 2px solid #2e7d32;
+}
+
+.welcome-name {
+  font-weight: 600;
+  color: inherit;
+}
+
+.welcome-name:hover {
+  color: #205b2d;
+}
+
+.welcome-age {
+  font-size: 0.75em;
+  color: #4c7a55;
+  white-space: nowrap;
+}
+
+.welcome-btn {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background-color: #42a35e;
+  border: 1px solid #2e7d32;
+  color: #ffffff;
+  white-space: nowrap;
+}
+.welcome-btn:hover,
+.welcome-btn:focus {
+  background-color: #2e7d32;
+  border-color: #2e7d32;
+  color: #ffffff;
+}

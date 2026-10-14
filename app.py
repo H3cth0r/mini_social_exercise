@@ -18,6 +18,13 @@ from domains.contributions import entities as contributions_entities
 # wired the same way as the contributions domain above.
 from domains.moderation import repositories as moderation_repositories
 from domains.moderation import usecases as moderation_usecases
+# Feed domain: the Recommended tab's ranking (assignment 3).
+from domains.feed import repositories as feed_repositories
+from domains.feed import usecases as feed_usecases
+# Onboarding domain: the welcome crew for newcomers (DC 18 + DC 20).
+from domains.onboarding import repositories as onboarding_repositories
+from domains.onboarding import usecases as onboarding_usecases
+from domains.onboarding import entities as onboarding_entities
 
 app = Flask(__name__)
 app.secret_key = '123456789' 
@@ -154,7 +161,7 @@ def feed():
         final_params = params + list(pagination_params)
         posts = query_db(query, final_params)
     elif sort == 'recommended':
-        posts = recommend(current_user_id, show == 'following' and current_user_id)
+        posts = recommend(current_user_id, show == 'following')
     else:  # Default sort is 'new'
         query = f"""
             SELECT p.id, p.content, p.created_at, u.username, u.id as user_id
@@ -237,6 +244,20 @@ def feed():
                 flash(contributions_usecases.pending_nudge_message(
                     nudger_names, my_streak), 'info')
 
+    # Welcome crew (onboarding): newcomers who nobody greeted yet, each with
+    # a working Say hi button; the most active members are responsible for
+    # the welcome (chapter 5, DC 18 + DC 20). A newcomer who was greeted
+    # gets a personal toast naming the person who did.
+    onboarding_repo = onboarding_repositories.OnboardingRepository(get_db())
+    welcome_crew_cards = onboarding_usecases.welcome_crew(
+        onboarding_repo, current_user_id)
+    if current_user_id:
+        viewer_age = onboarding_repo.get_account_age(current_user_id)
+        if onboarding_usecases.is_newcomer(viewer_age):
+            greeter_names = onboarding_repo.get_greeter_names(current_user_id)
+            if greeter_names:
+                flash(onboarding_usecases.welcome_toast(greeter_names), 'info')
+
     #  5. Render Template with Pagination Info
     return render_template('feed.html.j2',
                            posts=posts_data,
@@ -249,7 +270,8 @@ def feed():
                            streaks=streaks,
                            my_streak=my_streak,
                            streak_at_risk=streak_at_risk,
-                           rescue_crew=rescue_crew_cards)
+                           rescue_crew=rescue_crew_cards,
+                           welcome_crew=welcome_crew_cards)
 
 @app.route('/posts/new', methods=['POST'])
 def add_post():
@@ -845,6 +867,46 @@ def nudge_user(user_id):
 
     return redirect(request.referrer or url_for('feed'))
 
+@app.route('/u/<int:user_id>/greet', methods=['POST'])
+def greet_user(user_id):
+    """Welcome crew: the viewer says hi to a newcomer (DC 18: friendly
+    interactions soon after joining keep newcomers; DC 20: assigned
+    responsibility makes them happen).
+
+    A greeting is a working interaction, once per pair — and, like the
+    nudge, the button is never trusted: the route re-checks eligibility
+    with fresh data through the same pure rule that drew the button."""
+    greeter_id = session.get('user_id')
+
+    if not greeter_id:
+        flash("You must be logged in to greet.", "danger")
+        return redirect(url_for('login'))
+
+    if greeter_id == user_id:
+        flash("You cannot greet yourself.", "warning")
+        return redirect(request.referrer or url_for('feed'))
+
+    target = query_db('SELECT id, username FROM users WHERE id = ?', (user_id,), one=True)
+    if not target:
+        flash("The member you want to greet does not exist.", "danger")
+        return redirect(request.referrer or url_for('feed'))
+
+    repo = onboarding_repositories.OnboardingRepository(get_db())
+    viewer_age = repo.get_account_age(greeter_id)
+    allowed, reason = onboarding_usecases.can_greet(
+        repo.greeting_exists(greeter_id, user_id), viewer_age)
+
+    if not allowed:
+        flash(reason, "warning")
+    else:
+        repo.save_greeting(onboarding_entities.Greeting(
+            greeter_id=greeter_id, newcomer_id=user_id,
+            day=datetime.utcnow().strftime('%Y-%m-%d')))
+        flash(onboarding_usecases.greeting_confirmation(target['username']),
+              "success")
+
+    return redirect(request.referrer or url_for('feed'))
+
 @app.route('/admin')
 def admin_dashboard():
     """Displays the admin dashboard with users, posts, and comments, sorted by risk."""
@@ -1103,16 +1165,16 @@ def recommend(user_id, filter_following):
     
     Users: @starboy99, @DancingDolphin, @blogger_bob
     Posts: 1810, 1875, 1880, 2113
-    
-    Materials: 
-    - https://www.nvidia.com/en-us/glossary/recommendation-system/
-    - http://www.configworks.com/mz/handout_recsys_sac2010.pdf
-    - https://www.researchgate.net/publication/227268858_Recommender_Systems_Handbook
+
+    Implementation: a thin delegate, like the other graded functions. The
+    rules live in the feed domain (domains/feed/usecases.py): a content-based
+    interest profile (words of positively-reacted posts + posts of followed
+    users), scored over a candidate pool that excludes the user's own posts
+    and everything they already reacted to.
     """
 
-    recommended_posts = {} 
-
-    return recommended_posts;
+    repo = feed_repositories.FeedRepository(get_db())
+    return feed_usecases.recommend(repo, user_id, bool(filter_following))
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
