@@ -13,6 +13,15 @@ class OnboardingRepository:
         """db: an open sqlite3 connection (from app.get_db())."""
         self.db = db
 
+    def get_account_age(self, user_id):
+        """The account's age in days (float), or None if it doesn't exist.
+
+        Needed by the greeting rule: brand-new members greet later."""
+        row = self.db.execute(
+            "SELECT julianday('now') - julianday(created_at) FROM users "
+            "WHERE id = ?", (user_id,)).fetchone()
+        return row[0] if row else None
+
     def get_newcomers(self):
         """[(user_id, username, age_days)] — accounts inside their first
         3 days. Positional tuples, newest signup first."""
@@ -41,13 +50,6 @@ class OnboardingRepository:
             "INSERT INTO greetings (greeter_id, newcomer_id, day) VALUES (?, ?, ?)",
             (greeting.greeter_id, greeting.newcomer_id, greeting.day))
         self.db.commit()
-
-    def get_greetered_ids_by(self, greeter_id):
-        """set of newcomer ids this user has already greeted (quiet state)."""
-        rows = self.db.execute(
-            "SELECT newcomer_id FROM greetings WHERE greeter_id = ?",
-            (greeter_id,)).fetchall()
-        return {row[0] for row in rows}
 
     def get_greeter_names(self, newcomer_id):
         """Usernames of the people who greeted this newcomer — the personal

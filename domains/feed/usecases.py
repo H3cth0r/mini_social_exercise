@@ -105,14 +105,14 @@ def recommend(repo, user_id, filter_following, limit=RECOMMEND_COUNT):
     user already voted on.
     """
     if user_id is None:
-        return repo.get_recent_posts(limit)
+        return repo.get_recent_posts(limit, viewer_id=None)
     reacted = repo.get_positive_reacted_post_texts(user_id)
     followed_ids = repo.get_followed_ids(user_id)
     followed_texts = repo.get_post_texts_by_users(followed_ids)
     profile = build_interest_profile(reacted, followed_texts)
     if not profile.words:
         # No signals yet: nobody can be recommended for, fall back to recency.
-        return repo.get_recent_posts(limit)
+        return repo.get_recent_posts(limit, viewer_id=user_id)
     candidates = repo.get_candidate_posts(user_id, follow_only=bool(
         filter_following and followed_ids))
     if not candidates:

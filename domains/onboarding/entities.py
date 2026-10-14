@@ -16,10 +16,12 @@ class Greeting:
 
 @dataclass
 class NewcomerEntry:
-    """One newcomer as shown in the feed's welcome strip."""
+    """One newcomer as shown in the feed's welcome strip.
+
+    A newcomer leaves the strip as soon as anyone greets them (the welcome
+    is answered), so there is no 'already greeted' state here by design."""
 
     user_id: int
     username: str
     age_days: float
     assigned_to_me: bool = False   # I am the DC 20 responsible greeter
-    greeted_by_me: bool = False    # I already greeted them (quiet state)

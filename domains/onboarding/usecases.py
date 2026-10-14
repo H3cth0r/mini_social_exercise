@@ -59,7 +59,7 @@ def welcome_toast(greeter_names):
 
 
 def assemble_welcome_entries(newcomer_rows, greetings_received,
-                             assignments, greeter_ids, viewer_id):
+                             assignments, viewer_id):
     """Build the strip's entries; rules, not SQL.
 
     newcomer_rows:       [(user_id, username, age_days)]
@@ -82,7 +82,6 @@ def assemble_welcome_entries(newcomer_rows, greetings_received,
             username=username,
             age_days=age_days,
             assigned_to_me=assignments.get(user_id) == viewer_id,
-            greeted_by_me=user_id in (greeter_ids or ()),
         ))
     # The DC 20 assignment comes first; then the freshest newcomers first.
     # No ranking is shown beyond this ordering (same limit as assignment 1's
@@ -114,9 +113,8 @@ def welcome_crew(repo, viewer_id):
     pool = [pid for pid in repo.get_greeter_pool()
             if pid not in {row[0] for row in roster}]
     assignments = assign_greeters([row[0] for row in roster], pool)
-    greeter_ids = repo.get_greetered_ids_by(viewer_id)
     return assemble_welcome_entries(newcomer_rows, greeted_counts,
-                                    assignments, greeter_ids, viewer_id)
+                                    assignments, viewer_id)
 
 
 def can_greet(greeting_exists, viewer_newcomer_days):

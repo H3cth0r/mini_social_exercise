@@ -47,3 +47,10 @@ CREATE TABLE IF NOT EXISTS nudges (
     nudged_id INTEGER NOT NULL,
     day TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS greetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    greeter_id INTEGER NOT NULL,
+    newcomer_id INTEGER NOT NULL,
+    day TEXT NOT NULL
+);

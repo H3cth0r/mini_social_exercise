@@ -73,14 +73,24 @@ class FeedRepository:
             tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
-    def get_recent_posts(self, limit):
+    def get_recent_posts(self, limit, viewer_id=None):
         """Newest posts, the fallback content when there are no signals.
 
-        Same shape as get_candidate_posts; excludes nothing, so visitors
-        (user_id None) and zero-signal users still get a useful tab."""
-        rows = self.db.execute(
-            'SELECT p.id, p.content, p.created_at, u.username, u.id AS user_id '
-            'FROM posts p JOIN users u ON p.user_id = u.id '
-            'ORDER BY p.created_at DESC, p.id DESC LIMIT ?',
-            (limit,)).fetchall()
+        Same shape and exclusions as get_candidate_posts: a logged-in user
+        never sees their own posts or posts they reacted to, not even in
+        the fallback; visitors (viewer_id None) get the plain newest."""
+        if viewer_id is None:
+            rows = self.db.execute(
+                'SELECT p.id, p.content, p.created_at, u.username, u.id AS user_id '
+                'FROM posts p JOIN users u ON p.user_id = u.id '
+                'ORDER BY p.created_at DESC, p.id DESC LIMIT ?',
+                (limit,)).fetchall()
+        else:
+            rows = self.db.execute(
+                'SELECT p.id, p.content, p.created_at, u.username, u.id AS user_id '
+                'FROM posts p JOIN users u ON p.user_id = u.id '
+                'WHERE p.user_id != ? AND p.id NOT IN '
+                '(SELECT post_id FROM reactions WHERE user_id = ?) '
+                'ORDER BY p.created_at DESC, p.id DESC LIMIT ?',
+                (viewer_id, viewer_id, limit)).fetchall()
         return [dict(row) for row in rows]
