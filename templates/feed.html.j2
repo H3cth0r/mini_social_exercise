@@ -10,6 +10,12 @@
 {% if session.get('user_id') %}
 {{ streak_banner(streak_at_risk, my_streak) }}
 
+{# Progressive access: the newcomer's posting limit and its
+   countdown, or the "used today's post" state. Comments never appear here. #}
+{% if privilege_line %}
+<p class="privilege-notice" role="status">{{ privilege_line }}</p>
+{% endif %}
+
 {# Welcome crew: brand-new members nobody greeted yet (DC 18 + DC 20).
    The viewer's assigned newcomer is highlighted; a greeted newcomer
    leaves the strip (the welcome was answered). #}

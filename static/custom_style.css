@@ -144,6 +144,19 @@ footer {
   color: #b45309;
 }
 
+/* Progressive access: the newcomer's daily posting notice */
+.privilege-notice {
+  max-width: 800px;
+  margin: 0 auto 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px dashed #b6c2cf;
+  border-radius: 0.375rem;
+  background-color: #f7f9fb;
+  color: #495057;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 /* Onboarding: the welcome-crew strip on the feed (new members) */
 
 .onboarding-welcome {

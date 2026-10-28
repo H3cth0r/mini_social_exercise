@@ -251,9 +251,17 @@ def feed():
     onboarding_repo = onboarding_repositories.OnboardingRepository(get_db())
     welcome_crew_cards = onboarding_usecases.welcome_crew(
         onboarding_repo, current_user_id)
+    privilege_line = None
     if current_user_id:
         viewer_age = onboarding_repo.get_account_age(current_user_id)
         if onboarding_usecases.is_newcomer(viewer_age):
+            posts_today = onboarding_repo.count_posts_today(current_user_id)
+            allowed, reason, _ = onboarding_usecases.posting_privilege(
+                viewer_age, posts_today)
+            # The composer notice: the limit and its countdown, or the
+            # "used today's post" state once they posted.
+            privilege_line = (reason if not allowed
+                              else onboarding_usecases.privilege_banner(viewer_age))
             greeter_names = onboarding_repo.get_greeter_names(current_user_id)
             if greeter_names:
                 flash(onboarding_usecases.welcome_toast(greeter_names), 'info')
@@ -271,7 +279,8 @@ def feed():
                            my_streak=my_streak,
                            streak_at_risk=streak_at_risk,
                            rescue_crew=rescue_crew_cards,
-                           welcome_crew=welcome_crew_cards)
+                           welcome_crew=welcome_crew_cards,
+                           privilege_line=privilege_line)
 
 @app.route('/posts/new', methods=['POST'])
 def add_post():
@@ -285,6 +294,19 @@ def add_post():
 
     # Get content from the submitted form
     content = request.form.get('content')
+
+    # Progressive access: a brand-new account may create one post per UTC
+    # day. Re-checked here on every request; the composer
+    # notice is only the explanation, never the enforcement. Comments are
+    # not limited by this rule.
+    onboard_repo = onboarding_repositories.OnboardingRepository(get_db())
+    account_age = onboard_repo.get_account_age(user_id)
+    posts_today = onboard_repo.count_posts_today(user_id)
+    allowed, privilege_reason, _ = onboarding_usecases.posting_privilege(
+        account_age, posts_today)
+    if not allowed:
+        flash(privilege_reason, 'warning')
+        return redirect(url_for('feed'))
 
     # Pass the user's content through the moderation response ladder (DC 31):
     # the score decides the standing's response, the text itself is stored
