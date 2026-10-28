@@ -1,15 +1,19 @@
 """
-Onboarding domain — use cases: the welcome-crew rules.
+Onboarding domain — use cases: the newcomer rules.
 
 Pure business rules with the claim numbers they implement in the docstrings.
 Repositories are passed in, so this module imports no sqlite3 or Flask.
 
-Mechanic summary: accounts younger than 3 days that have received no
-interactions yet are shown on the feed's welcome strip; each one gets ONE
-assigned greeter (DC 20) from the most active members; everyone can greet
-once (a working Say hi, DC 18); the newcomer gets a personal toast naming
-the greeter.
+Two mechanics:
+1. Welcome crew (DC 18 + DC 20): newcomer accounts that nobody greeted yet
+   are shown on the feed's welcome strip; each one gets ONE assigned greeter
+   from the most active members; anyone can greet once (a working Say hi).
+2. Progressive access (DC 25): during their first NEWCOMER_AGE_DAYS days,
+   new accounts earn posting privileges step by step: one post per day,
+   then full posting. Comments are never limited.
 """
+
+import math
 
 from .entities import Greeting, NewcomerEntry
 
@@ -18,10 +22,41 @@ from .entities import Greeting, NewcomerEntry
 # the 'brand new' line for risk, this is the friendlier end).
 NEWCOMER_AGE_DAYS = 3.0
 
+# The DC 25 feature: how many posts a new account may create per UTC day.
+POSTS_PER_DAY_FOR_NEWCOMERS = 1
+
 
 def is_newcomer(age_days):
     """True while the account is inside its first NEWCOMER_AGE_DAYS days."""
     return age_days is not None and age_days < NEWCOMER_AGE_DAYS
+
+
+def posting_privilege(age_days, posts_today):
+    """(allowed, reason, unlocks_in_days) — DC 25 as a pure rule.
+
+    New accounts (< 3 days) may create ONE post per UTC day. Comments are
+    never limited, because talking is the behaviour we want (DC 18) and
+    flooding the feed is not. Old accounts post freely; unlocks_in_days is
+    None for them (the privilege is already earned).
+    """
+    if not is_newcomer(age_days):
+        return True, '', None
+    days_left = max(1, math.ceil(NEWCOMER_AGE_DAYS - age_days))
+    if posts_today >= POSTS_PER_DAY_FOR_NEWCOMERS:
+        return (False,
+                "You used today's post. You can post again tomorrow.",
+                days_left)
+    return True, '', days_left
+
+
+def privilege_banner(age_days):
+    """The quiet feed line explaining the limit, or None for old accounts."""
+    if not is_newcomer(age_days):
+        return None
+    days_left = max(1, math.ceil(NEWCOMER_AGE_DAYS - age_days))
+    day_word = 'day' if days_left == 1 else 'days'
+    return (f"New account: 1 post per day. Unlimited posting unlocks in "
+            f"{days_left} {day_word}.")
 
 
 def needs_welcome(age_days, greetings_received):

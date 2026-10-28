@@ -22,6 +22,22 @@ class OnboardingRepository:
             "WHERE id = ?", (user_id,)).fetchone()
         return row[0] if row else None
 
+    def count_posts_today(self, user_id, day=None):
+        """How many posts the user created today (UTC).
+
+        day is injectable for tests ('YYYY-MM-DD'); without it the database
+        clock decides, so the rule and the stored timestamps share one
+        timeline."""
+        if day is None:
+            row = self.db.execute(
+                "SELECT COUNT(*) FROM posts WHERE user_id = ? "
+                "AND date(created_at) = date('now')", (user_id,)).fetchone()
+        else:
+            row = self.db.execute(
+                "SELECT COUNT(*) FROM posts WHERE user_id = ? "
+                "AND date(created_at) = ?", (user_id, day)).fetchone()
+        return row[0]
+
     def get_newcomers(self):
         """[(user_id, username, age_days)] — accounts inside their first
         3 days. Positional tuples, newest signup first."""
